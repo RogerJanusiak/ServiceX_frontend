@@ -180,6 +180,41 @@ def test_get_renderables_skips_invisible_tasks():
     assert len(renderables) == 1
 
 
+def test_download_aggregation_ignores_title_padding():
+    """
+    Regression test: query_core.py right-pads each dataset's "Download"
+    (or "Signing URLS") title to line up with that dataset's own
+    "<title>: Transform" title, so the padded string is a different length
+    per dataset. ExpandableProgress used to bucket tasks for aggregation by
+    raw string equality, so the "Download/URLs" aggregate only ever summed
+    tasks whose padding happened to match the most recent update() call -
+    its shown total/completed flickered between different dataset subsets
+    instead of being a stable sum across all datasets.
+    """
+    with ExpandableProgress(overall_progress=True) as progress:
+        short_transform_title = "a: Transform"
+        short_download_title = "Download".rjust(len(short_transform_title))
+
+        long_transform_title = "a_much_longer_dataset_name: Transform"
+        long_download_title = "Download".rjust(len(long_transform_title))
+
+        # Sanity check: these two datasets really do get differently-padded
+        # download titles, same as real query_core.py output would.
+        assert short_download_title != long_download_title
+
+        progress.add_task(short_transform_title, start=False, total=None)
+        d1 = progress.add_task(short_download_title, start=False, total=None)
+        progress.add_task(long_transform_title, start=False, total=None)
+        d2 = progress.add_task(long_download_title, start=False, total=None)
+
+        progress.update(d1, short_download_title, total=10, completed=4)
+        progress.update(d2, long_download_title, total=20, completed=6)
+
+        download_task = progress.progress.tasks[progress.overall_progress_download_task]
+        assert download_task.total == 30
+        assert download_task.completed == 10
+
+
 @pytest.mark.asyncio
 async def test_no_background_refresh_thread():
     """

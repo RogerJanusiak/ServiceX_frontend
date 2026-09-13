@@ -54,6 +54,21 @@ BROKEN_STYLE = [
 ]
 
 
+def _bucket(name: str) -> str:
+    """
+    Classify a task's title into the two buckets ExpandableProgress
+    aggregates into ("Transform" and "Download"). query_core.py right-pads
+    each dataset's "Download"/"Signing URLS" title to line up with that
+    dataset's own "<title>: Transform" title, so the raw string is different
+    per dataset (e.g. "   Download" vs "        Download"). Comparing raw
+    strings for bucketing (as add_task/update used to) means the aggregate
+    only ever sums tasks whose padding happens to match, so the shown
+    total/completed jumps between different dataset subsets instead of
+    summing all of them. Stripping whitespace before classifying fixes it.
+    """
+    return "Transform" if name.strip().endswith("Transform") else "Download"
+
+
 class ProgressCounts:
     def __init__(
         self,
@@ -180,7 +195,7 @@ class ExpandableProgress:
                 param, start=start, total=total, visible=False
             )
             new_task = ProgressCounts(
-                "Transform" if param.endswith("Transform") else param,
+                _bucket(param),
                 task_id,
                 start=start,
                 total=total,
@@ -193,8 +208,7 @@ class ExpandableProgress:
     def update(self, task_id, task_type, total=None, completed=None, **fields):
 
         if self.display_progress and self.overall_progress:
-            if task_type.endswith("Transform"):
-                task_type = "Transform"
+            task_type = _bucket(task_type)
             # Calculate and update
             overall_completed = 0
             overall_total = 0
@@ -238,7 +252,7 @@ class ExpandableProgress:
 
     def start_task(self, task_id, task_type):
         if self.display_progress and self.overall_progress:
-            if task_type.endswith("Transform"):
+            if _bucket(task_type) == "Transform":
                 self.progress.start_task(task_id=self.overall_progress_transform_task)
             else:
                 self.progress.start_task(task_id=self.overall_progress_download_task)
@@ -251,7 +265,7 @@ class ExpandableProgress:
                 self.progress_counts[task_id].completed += 1
             else:
                 self.progress_counts[task_id].completed = 1
-            if task_type.endswith("Transform"):
+            if _bucket(task_type) == "Transform":
                 self.progress.advance(task_id=self.overall_progress_transform_task)
             else:
                 self.progress.advance(task_id=self.overall_progress_download_task)
