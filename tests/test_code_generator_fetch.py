@@ -68,3 +68,44 @@ async def test_codegen_list_skipped_when_cached(mocker):
 
     sx_adapter.get_code_generators_async.assert_not_called()
     assert result is cached
+
+
+@pytest.mark.asyncio
+async def test_as_files_async_dataset_group_bypasses_progress_rewrap(mocker):
+    """
+    Regression test: DatasetGroup.as_files_async builds one aggregating
+    ExpandableProgress (overall_progress=True) and hands it down to each
+    dataset's as_files_async as provided_progress. Previously as_files_async
+    always re-wrapped provided_progress in a *fresh* ExpandableProgress
+    (which defaults overall_progress=False), discarding the aggregation - so
+    progress_bar="compact" silently produced one Transform/Download bar pair
+    per dataset instead of one pair overall. Mirroring as_signed_urls_async's
+    existing dataset_group bypass fixes it: when dataset_group=True, the
+    caller's progress tracker is passed straight through to
+    submit_and_download with no re-wrap.
+    """
+    sx_adapter = AsyncMock(spec=ServiceXAdapter)
+
+    client = ServiceXClient(config_path="tests/example_config.yaml")
+    client.servicex = sx_adapter
+
+    q = client.generic_query(
+        dataset_identifier=FileListDataset("file.root"),
+        query=GenericQueryStringGenerator("1", "uproot"),
+    )
+
+    submit_and_download = mocker.patch.object(
+        Query, "submit_and_download", AsyncMock(return_value="result")
+    )
+
+    outer_progress = (
+        object()
+    )  # stand-in for the DatasetGroup's shared ExpandableProgress
+    result = await q.as_files_async(
+        provided_progress=outer_progress, dataset_group=True
+    )
+
+    submit_and_download.assert_awaited_once_with(
+        signed_urls_only=False, expandable_progress=outer_progress
+    )
+    assert result == "result"

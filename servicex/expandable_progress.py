@@ -233,6 +233,8 @@ class ExpandableProgress:
 class TranformStatusProgress(Progress):
     def get_renderables(self):
         for task in self.tasks:
+            if not task.visible:
+                continue
             if task.fields.get("bar") == "failure":
                 self.columns = BROKEN_STYLE
             else:

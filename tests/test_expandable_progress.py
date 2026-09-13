@@ -152,6 +152,30 @@ def test_get_renderables_with_failure():
     assert progress.columns[1].complete_style == "rgb(255,0,0)"
 
 
+def test_get_renderables_skips_invisible_tasks():
+    """
+    Regression test: ExpandableProgress creates the per-dataset Transform/
+    Download tasks with visible=False when overall_progress=True, so they
+    should never be rendered. Previously get_renderables() ignored
+    task.visible and yielded a table for every task regardless, which meant
+    a batch of N datasets produced ~2N renderables per refresh instead of
+    the intended 2 aggregate rows - heavy enough to break widget rendering
+    in some Jupyter frontends when N is large.
+    """
+    progress = TranformStatusProgress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(complete_style="rgb(114,156,31)", finished_style="rgb(0,255,0)"),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(compact=True, elapsed_when_finished=True),
+    )
+    progress.add_task("visible_task", visible=True)
+    for i in range(10):
+        progress.add_task(f"hidden_task_{i}", visible=False)
+
+    renderables = list(progress.get_renderables())
+    assert len(renderables) == 1
+
+
 def test_progress_advance():
     with ExpandableProgress() as progress:
         t_id = progress.add_task("Transform", True, 100)
