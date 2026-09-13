@@ -25,7 +25,11 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+import asyncio
+import threading
 from unittest.mock import patch, MagicMock
+
+import pytest
 
 from servicex.expandable_progress import ExpandableProgress, TranformStatusProgress
 from rich.progress import TextColumn, BarColumn, MofNCompleteColumn, TimeRemainingColumn
@@ -174,6 +178,42 @@ def test_get_renderables_skips_invisible_tasks():
 
     renderables = list(progress.get_renderables())
     assert len(renderables) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_background_refresh_thread():
+    """
+    Regression test: rich's default auto_refresh spawns a background thread
+    that repeatedly sends Jupyter comm messages (via ipy_widget.clear_output()
+    + console.print()) for the entire duration a progress bar is displayed,
+    from a thread other than the kernel's main thread. That's suspected of
+    tripping some Jupyter frontends' widget-registration handling, especially
+    given ServiceX transforms can run for many minutes. ExpandableProgress
+    should disable rich's thread-based refresh and instead refresh from an
+    asyncio task on the event loop, so no extra thread is ever created and
+    all widget/comm activity stays on the main thread.
+    """
+    before = threading.active_count()
+    with ExpandableProgress(display_progress=True, overall_progress=True) as progress:
+        assert progress.progress.live.auto_refresh is False
+        assert progress._refresh_task is not None
+        during = threading.active_count()
+
+        t_id = progress.add_task("0001_x: Transform", start=True, total=10)
+        for _ in range(3):
+            progress.advance(t_id, "Transform")
+        # Give the asyncio refresh task a couple of scheduling turns to prove
+        # it actually runs (and updates the display) without any thread.
+        await asyncio.sleep(0.25)
+        assert progress.progress.tasks[0].completed == 3
+
+    # Let the cancellation raised inside _auto_refresh actually propagate.
+    await asyncio.sleep(0)
+    after = threading.active_count()
+
+    assert during == before
+    assert after == before
+    assert progress._refresh_task.cancelled() or progress._refresh_task.done()
 
 
 def test_progress_advance():
