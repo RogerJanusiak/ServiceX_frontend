@@ -157,15 +157,7 @@ def test_get_renderables_with_failure():
 
 
 def test_get_renderables_skips_invisible_tasks():
-    """
-    Regression test: ExpandableProgress creates the per-dataset Transform/
-    Download tasks with visible=False when overall_progress=True, so they
-    should never be rendered. Previously get_renderables() ignored
-    task.visible and yielded a table for every task regardless, which meant
-    a batch of N datasets produced ~2N renderables per refresh instead of
-    the intended 2 aggregate rows - heavy enough to break widget rendering
-    in some Jupyter frontends when N is large.
-    """
+    """Regression test: get_renderables() should skip tasks with visible=False."""
     progress = TranformStatusProgress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(complete_style="rgb(114,156,31)", finished_style="rgb(0,255,0)"),
@@ -181,16 +173,7 @@ def test_get_renderables_skips_invisible_tasks():
 
 
 def test_download_aggregation_ignores_title_padding():
-    """
-    Regression test: query_core.py right-pads each dataset's "Download"
-    (or "Signing URLS") title to line up with that dataset's own
-    "<title>: Transform" title, so the padded string is a different length
-    per dataset. ExpandableProgress used to bucket tasks for aggregation by
-    raw string equality, so the "Download/URLs" aggregate only ever summed
-    tasks whose padding happened to match the most recent update() call -
-    its shown total/completed flickered between different dataset subsets
-    instead of being a stable sum across all datasets.
-    """
+    """Regression test: the Download/URLs aggregate should sum every dataset, not just one."""
     with ExpandableProgress(overall_progress=True) as progress:
         short_transform_title = "a: Transform"
         short_download_title = "Download".rjust(len(short_transform_title))
@@ -198,8 +181,7 @@ def test_download_aggregation_ignores_title_padding():
         long_transform_title = "a_much_longer_dataset_name: Transform"
         long_download_title = "Download".rjust(len(long_transform_title))
 
-        # Sanity check: these two datasets really do get differently-padded
-        # download titles, same as real query_core.py output would.
+        # Sanity check: the two download titles really are padded differently.
         assert short_download_title != long_download_title
 
         progress.add_task(short_transform_title, start=False, total=None)
@@ -217,17 +199,7 @@ def test_download_aggregation_ignores_title_padding():
 
 @pytest.mark.asyncio
 async def test_no_background_refresh_thread():
-    """
-    Regression test: rich's default auto_refresh spawns a background thread
-    that repeatedly sends Jupyter comm messages (via ipy_widget.clear_output()
-    + console.print()) for the entire duration a progress bar is displayed,
-    from a thread other than the kernel's main thread. That's suspected of
-    tripping some Jupyter frontends' widget-registration handling, especially
-    given ServiceX transforms can run for many minutes. ExpandableProgress
-    should disable rich's thread-based refresh and instead refresh from an
-    asyncio task on the event loop, so no extra thread is ever created and
-    all widget/comm activity stays on the main thread.
-    """
+    """Regression test: no background thread is created; refresh runs via asyncio."""
     before = threading.active_count()
     with ExpandableProgress(display_progress=True, overall_progress=True) as progress:
         assert progress.progress.live.auto_refresh is False
@@ -237,8 +209,7 @@ async def test_no_background_refresh_thread():
         t_id = progress.add_task("0001_x: Transform", start=True, total=10)
         for _ in range(3):
             progress.advance(t_id, "Transform")
-        # Give the asyncio refresh task a couple of scheduling turns to prove
-        # it actually runs (and updates the display) without any thread.
+        # Give the asyncio refresh task a couple of turns to prove it runs.
         await asyncio.sleep(0.25)
         assert progress.progress.tasks[0].completed == 3
 

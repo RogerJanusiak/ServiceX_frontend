@@ -55,17 +55,7 @@ BROKEN_STYLE = [
 
 
 def _bucket(name: str) -> str:
-    """
-    Classify a task's title into the two buckets ExpandableProgress
-    aggregates into ("Transform" and "Download"). query_core.py right-pads
-    each dataset's "Download"/"Signing URLS" title to line up with that
-    dataset's own "<title>: Transform" title, so the raw string is different
-    per dataset (e.g. "   Download" vs "        Download"). Comparing raw
-    strings for bucketing (as add_task/update used to) means the aggregate
-    only ever sums tasks whose padding happens to match, so the shown
-    total/completed jumps between different dataset subsets instead of
-    summing all of them. Stripping whitespace before classifying fixes it.
-    """
+    """Classify a task title as "Transform" or "Download", ignoring padding."""
     return "Transform" if name.strip().endswith("Transform") else "Download"
 
 
@@ -115,19 +105,7 @@ class ExpandableProgress:
         self._refresh_task = None
         if display_progress:
             if self.overall_progress or not provided_progress:
-                # auto_refresh=False: rich's default auto_refresh spawns a
-                # background thread that calls ipy_widget.clear_output() +
-                # console.print() (i.e. sends Jupyter comm messages) on a
-                # 10Hz timer, from a thread other than the kernel's main
-                # thread, for the whole (often many-minutes-long) duration of
-                # a transform. Jupyter's widget/comm protocol isn't designed
-                # for messages originating outside the kernel's main thread,
-                # and this class of cross-thread widget access has been
-                # implicated in "No version of module ... is registered"
-                # errors in some Jupyter frontends. We disable rich's thread
-                # and instead refresh from an asyncio task on the event loop
-                # (the same thread the kernel runs on) - see __enter__ and
-                # _auto_refresh below.
+                # auto_refresh=False: skip rich's background thread; refresh via asyncio instead.
                 self.progress = TranformStatusProgress(
                     *DEFAULT_STYLE, auto_refresh=False
                 )

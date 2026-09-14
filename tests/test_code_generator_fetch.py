@@ -72,18 +72,7 @@ async def test_codegen_list_skipped_when_cached(mocker):
 
 @pytest.mark.asyncio
 async def test_as_files_async_dataset_group_bypasses_progress_rewrap(mocker):
-    """
-    Regression test: DatasetGroup.as_files_async builds one aggregating
-    ExpandableProgress (overall_progress=True) and hands it down to each
-    dataset's as_files_async as provided_progress. Previously as_files_async
-    always re-wrapped provided_progress in a *fresh* ExpandableProgress
-    (which defaults overall_progress=False), discarding the aggregation - so
-    progress_bar="compact" silently produced one Transform/Download bar pair
-    per dataset instead of one pair overall. Mirroring as_signed_urls_async's
-    existing dataset_group bypass fixes it: when dataset_group=True, the
-    caller's progress tracker is passed straight through to
-    submit_and_download with no re-wrap.
-    """
+    """Regression test: dataset_group=True passes provided_progress through, unwrapped."""
     sx_adapter = AsyncMock(spec=ServiceXAdapter)
 
     client = ServiceXClient(config_path="tests/example_config.yaml")
